@@ -2,9 +2,11 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
 import toast from 'react-hot-toast'
-import { Loader2, User, Edit2, Save, X, Plus, AlertCircle, Heart } from 'lucide-react'
+import { Loader2, User, Edit2, Save, X, Plus, AlertCircle, Heart, Globe, Check } from 'lucide-react'
+import { useLanguage } from '@/components/providers/LanguageProvider'
 
 export default function PatientProfilePage() {
+  const { language, setLanguage, t } = useLanguage()
   const [profile, setProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(false)
@@ -54,11 +56,14 @@ export default function PatientProfilePage() {
         allergies: form.allergies, chronicConditions: form.chronicConditions,
         emergencyContact: form.emergencyContact,
       })
-      toast.success('Profile updated')
+      toast.success(t('profile.updatedSuccess'))
       setEditing(false)
       fetchProfile()
-    } catch { toast.error('Failed to save') }
-    finally { setSaving(false) }
+    } catch {
+      toast.error('Failed to save profile')
+    } finally {
+      setSaving(false)
+    }
   }
 
   function addAllergy() {
@@ -82,27 +87,86 @@ export default function PatientProfilePage() {
   const age = profile?.dob ? Math.floor((Date.now() - new Date(profile.dob).getTime()) / (365.25 * 24 * 3600000)) : null
 
   return (
-    <div className="animate-fade-in max-w-3xl">
+    <div className="animate-fade-in max-w-3xl space-y-4">
       <div className="page-header flex items-center justify-between">
         <div>
-          <h2 className="page-title">My Profile</h2>
-          <p className="page-subtitle">Personal information & medical history</p>
+          <h2 className="page-title">{t('profile.title')}</h2>
+          <p className="page-subtitle">{t('profile.subtitle')}</p>
         </div>
         {!editing ? (
           <button onClick={() => setEditing(true)} className="btn-secondary flex items-center gap-2">
-            <Edit2 className="w-4 h-4" /> Edit
+            <Edit2 className="w-4 h-4" /> {t('action.edit')}
           </button>
         ) : (
           <div className="flex gap-2">
             <button onClick={() => { setEditing(false); fetchProfile() }} className="btn-secondary flex items-center gap-2">
-              <X className="w-4 h-4" /> Cancel
+              <X className="w-4 h-4" /> {t('action.cancel')}
             </button>
             <button onClick={save} disabled={saving} className="btn-primary flex items-center gap-2">
               {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-              Save
+              {saving ? t('action.saving') : t('action.save')}
             </button>
           </div>
         )}
+      </div>
+
+      {/* Language Preference Section */}
+      <div className="card-new p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-teal-500/10 text-teal-600 dark:text-teal-400">
+            <Globe className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="font-bold text-base" style={{ color: 'var(--text)' }}>{t('profile.langTitle')}</h3>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{t('profile.langDesc')}</p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setLanguage('en')
+              toast.success('Language changed to English')
+            }}
+            className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all ${
+              language === 'en'
+                ? 'border-teal-500 bg-teal-500/10 shadow-sm'
+                : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🇬🇧</span>
+              <div>
+                <p className="font-semibold text-sm" style={{ color: 'var(--text)' }}>English</p>
+                <p className="text-xs text-slate-500">Default interface language</p>
+              </div>
+            </div>
+            {language === 'en' && <Check className="w-5 h-5 text-teal-600 dark:text-teal-400" />}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setLanguage('hi')
+              toast.success('भाषा बदलकर हिंदी कर दी गई है')
+            }}
+            className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all ${
+              language === 'hi'
+                ? 'border-teal-500 bg-teal-500/10 shadow-sm'
+                : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">🇮🇳</span>
+              <div>
+                <p className="font-semibold text-sm" style={{ color: 'var(--text)' }}>हिंदी (Hindi)</p>
+                <p className="text-xs text-slate-500">संपूर्ण इंटरफ़ेस और एआई हिंदी में</p>
+              </div>
+            </div>
+            {language === 'hi' && <Check className="w-5 h-5 text-teal-600 dark:text-teal-400" />}
+          </button>
+        </div>
       </div>
 
       {/* Profile card */}
@@ -114,7 +178,7 @@ export default function PatientProfilePage() {
           </div>
           <div className="flex-1 grid grid-cols-2 gap-4">
             <div>
-              <p className="label">FULL NAME</p>
+              <p className="label">{t('profile.fullName')}</p>
               {editing ? (
                 <input className="input-field" value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
@@ -123,7 +187,7 @@ export default function PatientProfilePage() {
               )}
             </div>
             <div>
-              <p className="label">PHONE</p>
+              <p className="label">{t('profile.phone')}</p>
               {editing ? (
                 <input className="input-field" value={form.phone} placeholder="+91..."
                   onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
@@ -132,11 +196,11 @@ export default function PatientProfilePage() {
               )}
             </div>
             <div>
-              <p className="label">PATIENT ID (UHID)</p>
+              <p className="label">{t('profile.uhid')}</p>
               <p className="font-mono font-bold" style={{ color: 'var(--brand)' }}>{profile?.uhid}</p>
             </div>
             <div>
-              <p className="label">BLOOD GROUP</p>
+              <p className="label">{t('profile.bloodGroup')}</p>
               {editing ? (
                 <select className="input-field" value={form.bloodGroup}
                   onChange={e => setForm(f => ({ ...f, bloodGroup: e.target.value }))}>
@@ -148,19 +212,19 @@ export default function PatientProfilePage() {
               ) : (
                 <div className="flex items-center gap-1.5">
                   <Heart className="w-4 h-4 text-red-400" />
-                  <p className="font-semibold" style={{ color: 'var(--text)' }}>{profile?.bloodGroup || '—'}</p>
+                  <p className="font-semibold" style={{ color: 'var(--text)' }}>{profile?.bloodGroup || profile?.blood_group || '—'}</p>
                 </div>
               )}
             </div>
             <div>
-              <p className="label">DATE OF BIRTH</p>
+              <p className="label">{t('profile.dob')}</p>
               <p style={{ color: 'var(--text)' }}>
-                {profile?.dob ? new Date(profile.dob).toLocaleDateString('en-IN') : '—'}
-                {age !== null && ` (${age} years)`}
+                {profile?.dob ? new Date(profile.dob).toLocaleDateString(language === 'hi' ? 'hi-IN' : 'en-IN') : '—'}
+                {age !== null && ` (${age} ${language === 'hi' ? 'वर्ष' : 'years'})`}
               </p>
             </div>
             <div>
-              <p className="label">GENDER</p>
+              <p className="label">{t('profile.gender')}</p>
               <p style={{ color: 'var(--text)' }}>{profile?.gender || '—'}</p>
             </div>
           </div>
@@ -170,7 +234,7 @@ export default function PatientProfilePage() {
       {/* Medical History */}
       <div className="card-new p-6 mb-4">
         <h3 className="font-bold mb-4 flex items-center gap-2" style={{ color: 'var(--text)' }}>
-          <AlertCircle className="w-5 h-5 text-red-500" /> Allergies
+          <AlertCircle className="w-5 h-5 text-red-500" /> {t('profile.allergies')}
         </h3>
         <div className="flex flex-wrap gap-2 mb-3">
           {form.allergies.map((a, i) => (
@@ -185,12 +249,12 @@ export default function PatientProfilePage() {
             </span>
           ))}
           {form.allergies.length === 0 && !editing && (
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No known allergies</p>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t('profile.noAllergies')}</p>
           )}
         </div>
         {editing && (
           <div className="flex gap-2">
-            <input className="input-field flex-1" placeholder="Add allergy (e.g. Penicillin)"
+            <input className="input-field flex-1" placeholder={t('profile.addAllergy')}
               value={form.newAllergy}
               onChange={e => setForm(f => ({ ...f, newAllergy: e.target.value }))}
               onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addAllergy())} />
@@ -203,7 +267,7 @@ export default function PatientProfilePage() {
 
       <div className="card-new p-6 mb-4">
         <h3 className="font-bold mb-4 flex items-center gap-2" style={{ color: 'var(--text)' }}>
-          <Heart className="w-5 h-5" style={{ color: 'var(--brand)' }} /> Long-term Medical Conditions
+          <Heart className="w-5 h-5" style={{ color: 'var(--brand)' }} /> {t('profile.chronic')}
         </h3>
         <div className="flex flex-wrap gap-2 mb-3">
           {form.chronicConditions.map((c, i) => (
@@ -217,12 +281,12 @@ export default function PatientProfilePage() {
             </span>
           ))}
           {form.chronicConditions.length === 0 && !editing && (
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No chronic conditions</p>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{t('profile.noChronic')}</p>
           )}
         </div>
         {editing && (
           <div className="flex gap-2">
-            <input className="input-field flex-1" placeholder="Add condition (e.g. Diabetes Type 2)"
+            <input className="input-field flex-1" placeholder={t('profile.addCondition')}
               value={form.newCondition}
               onChange={e => setForm(f => ({ ...f, newCondition: e.target.value }))}
               onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addCondition())} />
@@ -235,24 +299,38 @@ export default function PatientProfilePage() {
 
       {/* Emergency Contact */}
       <div className="card-new p-6">
-        <h3 className="font-bold mb-4" style={{ color: 'var(--text)' }}>Emergency Contact</h3>
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { k: 'name', label: 'NAME', placeholder: 'Contact name' },
-            { k: 'relation', label: 'RELATION', placeholder: 'e.g. Spouse' },
-            { k: 'phone', label: 'PHONE', placeholder: '+91...' },
-          ].map(({ k, label, placeholder }) => (
-            <div key={k}>
-              <p className="label">{label}</p>
-              {editing ? (
-                <input className="input-field" placeholder={placeholder}
-                  value={(form.emergencyContact as any)[k]}
-                  onChange={e => setForm(f => ({ ...f, emergencyContact: { ...f.emergencyContact, [k]: e.target.value } }))} />
-              ) : (
-                <p style={{ color: 'var(--text)' }}>{(profile?.emergencyContact as any)?.[k] || '—'}</p>
-              )}
-            </div>
-          ))}
+        <h3 className="font-bold mb-4" style={{ color: 'var(--text)' }}>{t('profile.emergency')}</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <p className="label">{t('profile.contactName')}</p>
+            {editing ? (
+              <input className="input-field" placeholder="Contact name"
+                value={form.emergencyContact.name}
+                onChange={e => setForm(f => ({ ...f, emergencyContact: { ...f.emergencyContact, name: e.target.value } }))} />
+            ) : (
+              <p style={{ color: 'var(--text)' }}>{form.emergencyContact.name || '—'}</p>
+            )}
+          </div>
+          <div>
+            <p className="label">{t('profile.contactRelation')}</p>
+            {editing ? (
+              <input className="input-field" placeholder="e.g. Spouse / Parent"
+                value={form.emergencyContact.relation}
+                onChange={e => setForm(f => ({ ...f, emergencyContact: { ...f.emergencyContact, relation: e.target.value } }))} />
+            ) : (
+              <p style={{ color: 'var(--text)' }}>{form.emergencyContact.relation || '—'}</p>
+            )}
+          </div>
+          <div>
+            <p className="label">{t('profile.contactPhone')}</p>
+            {editing ? (
+              <input className="input-field" placeholder="+91..."
+                value={form.emergencyContact.phone}
+                onChange={e => setForm(f => ({ ...f, emergencyContact: { ...f.emergencyContact, phone: e.target.value } }))} />
+            ) : (
+              <p style={{ color: 'var(--text)' }}>{form.emergencyContact.phone || '—'}</p>
+            )}
+          </div>
         </div>
       </div>
     </div>

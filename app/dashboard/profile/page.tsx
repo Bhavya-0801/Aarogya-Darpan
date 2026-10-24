@@ -8,6 +8,8 @@ import {
   Phone, Mail, MapPin, Hash, Briefcase, IndianRupee,
   User, ClipboardList, Beaker, ShoppingBag, Star
 } from 'lucide-react'
+import LanguagePreferenceCard from '@/components/LanguagePreferenceCard'
+
 
 // ─── Hospital Admin Profile ──────────────────────────────────────────────────
 function HospitalAdminProfile() {
@@ -65,6 +67,9 @@ function HospitalAdminProfile() {
           </div>
         }
       </div>
+
+      {/* Language Preference */}
+      <LanguagePreferenceCard />
 
       {/* Admin info */}
       <div className="card-new p-6">
@@ -209,6 +214,9 @@ function DoctorProfile() {
         }
       </div>
 
+      {/* Language Preference */}
+      <LanguagePreferenceCard />
+
       {/* Doctor card */}
       <div className="card-new p-6">
         <div className="flex items-start gap-5">
@@ -329,6 +337,9 @@ function StaffProfile({ roleLabel, icon: Icon, color }: { roleLabel: string; ico
           </div>
         }
       </div>
+
+      {/* Language Preference */}
+      <LanguagePreferenceCard />
 
       <div className="card-new p-6">
         <div className="flex items-start gap-5">

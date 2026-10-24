@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { Toaster } from 'react-hot-toast'
 import AuthProvider from '@/components/providers/AuthProvider'
+import { LanguageProvider } from '@/components/providers/LanguageProvider'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -39,16 +40,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className={inter.className}>
         <AuthProvider>
-          {children}
-          <Toaster
-            position="top-right"
-            toastOptions={{
-              duration: 4000,
-              style: { background: '#1e293b', color: '#fff', borderRadius: '12px' },
-              success: { iconTheme: { primary: '#0d9488', secondary: '#fff' } },
-              error: { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
-            }}
-          />
+          <LanguageProvider>
+            {children}
+            <Toaster
+              position="top-right"
+              toastOptions={{
+                duration: 4000,
+                style: { background: '#1e293b', color: '#fff', borderRadius: '12px' },
+                success: { iconTheme: { primary: '#0d9488', secondary: '#fff' } },
+                error: { iconTheme: { primary: '#ef4444', secondary: '#fff' } },
+              }}
+            />
+          </LanguageProvider>
         </AuthProvider>
       </body>
     </html>

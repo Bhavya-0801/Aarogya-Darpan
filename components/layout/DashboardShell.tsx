@@ -10,12 +10,13 @@ import {
   LogOut, ChevronRight, Settings, Shield, Activity,
   Pill, Beaker, Receipt, AlertCircle, Menu, X,
   ClipboardList, ShoppingBag, Bell, Sun, Moon, Lock,
-  UserSearch, Package, PackageX,
+  UserSearch, Package, PackageX, Globe
 } from 'lucide-react'
 import axios from 'axios'
 import AIChatbot from '@/components/AIChatbot'
+import { useLanguage } from '@/components/providers/LanguageProvider'
 
-interface NavItem { href: string; icon: any; label: string }
+interface NavItem { href: string; icon: any; label: string; tKey?: string }
 interface NavSection { sectionLabel?: string; items: NavItem[] }
 type Role = 'patient' | 'hospital_admin' | 'doctor' | 'receptionist' | 'lab_technician' | 'pharmacy'
 
@@ -24,12 +25,12 @@ const NAV_CONFIG: Record<Role, NavSection[]> = {
     {
       sectionLabel: 'PATIENT',
       items: [
-        { href: '/dashboard', icon: Heart, label: 'My Health' },
-        { href: '/dashboard/prescriptions', icon: Pill, label: 'Prescriptions' },
-        { href: '/dashboard/labs', icon: FlaskConical, label: 'Lab Reports' },
-        { href: '/dashboard/billing', icon: Receipt, label: 'Bills' },
-        { href: '/dashboard/appointments', icon: Calendar, label: 'Appointments' },
-        { href: '/dashboard/family', icon: Users, label: 'Family' },
+        { href: '/dashboard', icon: Heart, label: 'My Health', tKey: 'nav.myHealth' },
+        { href: '/dashboard/prescriptions', icon: Pill, label: 'Prescriptions', tKey: 'nav.prescriptions' },
+        { href: '/dashboard/labs', icon: FlaskConical, label: 'Lab Reports', tKey: 'nav.labs' },
+        { href: '/dashboard/billing', icon: Receipt, label: 'Bills', tKey: 'nav.bills' },
+        { href: '/dashboard/appointments', icon: Calendar, label: 'Appointments', tKey: 'nav.appointments' },
+        { href: '/dashboard/family', icon: Users, label: 'Family', tKey: 'nav.family' },
       ],
     },
   ],
@@ -37,27 +38,27 @@ const NAV_CONFIG: Record<Role, NavSection[]> = {
     {
       sectionLabel: 'HOSPITAL',
       items: [
-        { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-        { href: '/dashboard/patients', icon: Users, label: 'Patients' },
-        { href: '/dashboard/beds', icon: BedDouble, label: 'Beds' },
-        { href: '/dashboard/staff', icon: UserCog, label: 'Doctors & Staff' },
-        { href: '/dashboard/appointments', icon: Calendar, label: 'Appointments' },
+        { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', tKey: 'nav.dashboard' },
+        { href: '/dashboard/patients', icon: Users, label: 'Patients', tKey: 'nav.patients' },
+        { href: '/dashboard/beds', icon: BedDouble, label: 'Beds', tKey: 'nav.beds' },
+        { href: '/dashboard/staff', icon: UserCog, label: 'Doctors & Staff', tKey: 'nav.staff' },
+        { href: '/dashboard/appointments', icon: Calendar, label: 'Appointments', tKey: 'nav.appointments' },
       ],
     },
     {
       sectionLabel: 'CLINICAL',
       items: [
-        { href: '/dashboard/prescriptions', icon: FileText, label: 'Prescriptions' },
-        { href: '/dashboard/labs', icon: FlaskConical, label: 'Laboratory' },
-        { href: '/dashboard/billing', icon: CreditCard, label: 'Billing' },
-        { href: '/dashboard/insurance', icon: Shield, label: 'Insurance' },
+        { href: '/dashboard/prescriptions', icon: FileText, label: 'Prescriptions', tKey: 'nav.prescriptions' },
+        { href: '/dashboard/labs', icon: FlaskConical, label: 'Laboratory', tKey: 'nav.laboratory' },
+        { href: '/dashboard/billing', icon: CreditCard, label: 'Billing', tKey: 'nav.billing' },
+        { href: '/dashboard/insurance', icon: Shield, label: 'Insurance', tKey: 'nav.insurance' },
       ],
     },
     {
       sectionLabel: 'ADMIN',
       items: [
-        { href: '/dashboard/analytics', icon: BarChart3, label: 'Reports' },
-        { href: '/dashboard/settings', icon: Settings, label: 'Settings' },
+        { href: '/dashboard/analytics', icon: BarChart3, label: 'Reports', tKey: 'nav.reports' },
+        { href: '/dashboard/settings', icon: Settings, label: 'Settings', tKey: 'nav.settings' },
       ],
     },
   ],
@@ -65,11 +66,11 @@ const NAV_CONFIG: Record<Role, NavSection[]> = {
     {
       sectionLabel: 'CLINICAL',
       items: [
-        { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-        { href: '/dashboard/patients', icon: Users, label: 'My Patients' },
-        { href: '/dashboard/prescriptions', icon: FileText, label: 'Prescriptions' },
-        { href: '/dashboard/appointments', icon: Calendar, label: 'Appointments' },
-        { href: '/dashboard/patients?tab=access', icon: UserSearch, label: 'Patient Access' },
+        { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', tKey: 'nav.dashboard' },
+        { href: '/dashboard/patients', icon: Users, label: 'My Patients', tKey: 'nav.myPatients' },
+        { href: '/dashboard/prescriptions', icon: FileText, label: 'Prescriptions', tKey: 'nav.prescriptions' },
+        { href: '/dashboard/appointments', icon: Calendar, label: 'Appointments', tKey: 'nav.appointments' },
+        { href: '/dashboard/patients?tab=access', icon: UserSearch, label: 'Patient Access', tKey: 'nav.patientAccess' },
       ],
     },
   ],
@@ -77,11 +78,11 @@ const NAV_CONFIG: Record<Role, NavSection[]> = {
     {
       sectionLabel: 'RECEPTION',
       items: [
-        { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-        { href: '/dashboard/emergency', icon: AlertCircle, label: 'Registration' },
-        { href: '/dashboard/appointments', icon: Calendar, label: 'Appointments' },
-        { href: '/dashboard/billing', icon: CreditCard, label: 'Billing' },
-        { href: '/dashboard/patients', icon: Users, label: 'Patients' },
+        { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', tKey: 'nav.dashboard' },
+        { href: '/dashboard/emergency', icon: AlertCircle, label: 'Registration', tKey: 'nav.registration' },
+        { href: '/dashboard/appointments', icon: Calendar, label: 'Appointments', tKey: 'nav.appointments' },
+        { href: '/dashboard/billing', icon: CreditCard, label: 'Billing', tKey: 'nav.billing' },
+        { href: '/dashboard/patients', icon: Users, label: 'Patients', tKey: 'nav.patients' },
       ],
     },
   ],
@@ -89,8 +90,8 @@ const NAV_CONFIG: Record<Role, NavSection[]> = {
     {
       sectionLabel: 'LABORATORY',
       items: [
-        { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-        { href: '/dashboard/labs', icon: Beaker, label: 'Test Reports' },
+        { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', tKey: 'nav.dashboard' },
+        { href: '/dashboard/labs', icon: Beaker, label: 'Test Reports', tKey: 'nav.labs' },
       ],
     },
   ],
@@ -98,10 +99,10 @@ const NAV_CONFIG: Record<Role, NavSection[]> = {
     {
       sectionLabel: 'PHARMACY',
       items: [
-        { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-        { href: '/dashboard/pharmacy/check-token', icon: ShoppingBag, label: 'Check Token' },
-        { href: '/dashboard/pharmacy/inventory', icon: Package, label: 'Medicine Inventory' },
-        { href: '/dashboard/prescriptions', icon: ClipboardList, label: 'All Prescriptions' },
+        { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', tKey: 'nav.dashboard' },
+        { href: '/dashboard/pharmacy/check-token', icon: ShoppingBag, label: 'Check Token', tKey: 'nav.checkToken' },
+        { href: '/dashboard/pharmacy/inventory', icon: Package, label: 'Medicine Inventory', tKey: 'nav.inventory' },
+        { href: '/dashboard/prescriptions', icon: ClipboardList, label: 'All Prescriptions', tKey: 'nav.prescriptions' },
       ],
     },
   ],
@@ -111,6 +112,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
   const { data: session } = useSession()
   const pathname = usePathname()
   const role = ((session?.user as any)?.role || 'patient') as Role
+  const { language, setLanguage, t } = useLanguage()
 
   const [darkMode, setDarkMode] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -152,11 +154,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
   }
 
   const navSections = NAV_CONFIG[role] || NAV_CONFIG.patient
-
-  const roleLabel =
-    role === 'hospital_admin' ? 'HOSPITAL ADMIN' :
-    role === 'lab_technician' ? 'LAB' :
-    role.toUpperCase()
+  const roleLabel = t(`role.${role}`) || role.toUpperCase()
 
   const subLabel =
     role === 'patient' ? (session?.user?.name || '') :
@@ -164,18 +162,18 @@ export default function DashboardShell({ children }: { children: React.ReactNode
 
   const SidebarContent = () => (
     <>
-      {/* Logo */}
-      <div className="sidebar-logo">
-        <img
-          src="/logo.png"
-          alt="Aarogya Darpan"
-          style={{
-            height: '38px',
-            width: 'auto',
-            objectFit: 'contain',
-            filter: 'drop-shadow(0 0 8px rgba(255,255,255,0.4)) brightness(1.2)',
-          }}
-        />
+      {/* Brand Header */}
+      <div className="sidebar-header">
+        <Link href="/dashboard" className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-lg"
+            style={{ background: 'linear-gradient(135deg, #0d9488, #059669)' }}>
+            <Heart className="w-5 h-5 text-white fill-white" />
+          </div>
+          <div>
+            <span className="font-serif font-bold text-white text-lg tracking-tight">Aarogya</span>
+            <span className="font-serif text-teal-400 text-lg ml-1">Darpan</span>
+          </div>
+        </Link>
       </div>
 
       {/* Role label */}
@@ -191,18 +189,21 @@ export default function DashboardShell({ children }: { children: React.ReactNode
             {section.sectionLabel && (
               <p className="sidebar-section-label">{section.sectionLabel}</p>
             )}
-            {section.items.map(({ href, icon: Icon, label }) => (
-              <Link
-                key={href}
-                href={href}
-                onClick={() => setMobileOpen(false)}
-                className={`sidebar-nav-item ${isActive(href) ? 'active' : ''}`}
-              >
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                <span>{label}</span>
-                {isActive(href) && <ChevronRight className="w-3 h-3 ml-auto opacity-70" />}
-              </Link>
-            ))}
+            {section.items.map(({ href, icon: Icon, label, tKey }) => {
+              const displayLabel = tKey ? t(tKey) : label
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={() => setMobileOpen(false)}
+                  className={`sidebar-nav-item ${isActive(href) ? 'active' : ''}`}
+                >
+                  <Icon className="w-4 h-4 flex-shrink-0" />
+                  <span>{displayLabel}</span>
+                  {isActive(href) && <ChevronRight className="w-3 h-3 ml-auto opacity-70" />}
+                </Link>
+              )
+            })}
           </div>
         ))}
       </nav>
@@ -227,11 +228,14 @@ export default function DashboardShell({ children }: { children: React.ReactNode
           onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.15)')}
           onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
         >
-          <LogOut className="w-4 h-4" /> Logout
+          <LogOut className="w-4 h-4" /> {t('nav.logout')}
         </button>
       </div>
     </>
   )
+
+  const activeItem = navSections.flatMap(s => s.items).find(i => isActive(i.href))
+  const pageTitle = activeItem?.tKey ? t(activeItem.tKey) : (activeItem?.label || 'Overview')
 
   return (
     <div className={`dashboard-layout ${darkMode ? 'dark' : ''}`}>
@@ -259,10 +263,26 @@ export default function DashboardShell({ children }: { children: React.ReactNode
               <Menu className="w-5 h-5" />
             </button>
             <span className="topbar-title">
-              {navSections.flatMap(s => s.items).find(i => isActive(i.href))?.label || 'Overview'}
+              {pageTitle}
             </span>
           </div>
           <div className="flex items-center gap-2">
+            {/* Bilingual Quick Toggle */}
+            <button
+              id="lang-toggle-btn"
+              onClick={() => setLanguage(language === 'en' ? 'hi' : 'en')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold btn-ghost transition-all"
+              style={{
+                background: 'rgba(13, 148, 136, 0.1)',
+                border: '1px solid rgba(13, 148, 136, 0.25)',
+                color: 'var(--brand)',
+              }}
+              title="Switch Language / भाषा बदलें"
+            >
+              <Globe className="w-3.5 h-3.5" />
+              <span>{language === 'en' ? '🇮🇳 हिंदी' : '🇬🇧 English'}</span>
+            </button>
+
             {/* ENC badge */}
             <div className="enc-badge hidden sm:flex">
               <Lock className="w-3 h-3" />
@@ -280,7 +300,7 @@ export default function DashboardShell({ children }: { children: React.ReactNode
             </button>
 
             {/* Notifications */}
-            <Link href="/dashboard/notifications" className="relative btn-ghost p-2 rounded-xl">
+            <Link href="/dashboard/notifications" className="relative btn-ghost p-2 rounded-xl" title={t('nav.notifications')}>
               <Bell className="w-4 h-4" />
               {unreadCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 w-4 h-4 text-xs bg-red-500 text-white rounded-full flex items-center justify-center font-bold">
@@ -291,8 +311,9 @@ export default function DashboardShell({ children }: { children: React.ReactNode
 
             {/* Profile */}
             <Link href="/dashboard/profile" id="profile-btn"
-              className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold"
-              style={{ background: 'var(--brand)' }}>
+              className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-bold shadow-md hover:scale-105 transition-transform"
+              style={{ background: 'var(--brand)' }}
+              title={t('nav.profile')}>
               {(session?.user?.name || 'U')[0].toUpperCase()}
             </Link>
           </div>

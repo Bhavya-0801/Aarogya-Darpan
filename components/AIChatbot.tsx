@@ -6,6 +6,7 @@ import {
   MessageCircle, X, Send, Bot, User, Loader2,
   Sparkles, RefreshCw, ChevronDown, Minimize2
 } from 'lucide-react'
+import { useLanguage } from '@/components/providers/LanguageProvider'
 
 interface Message {
   id: string
@@ -14,13 +15,22 @@ interface Message {
   time: string
 }
 
-const QUICK_PROMPTS = [
+const QUICK_PROMPTS_EN = [
   'I have a headache',
   'How to lower blood pressure?',
   'What should I eat for diabetes?',
   'I feel stressed and anxious',
   'How much sleep do I need?',
-  'Tips for weight loss',
+  'How to book an appointment?',
+]
+
+const QUICK_PROMPTS_HI = [
+  'सिर दर्द के घरेलू उपाय',
+  'ब्लड प्रेशर कैसे नियंत्रित करें?',
+  'डायबिटीज में क्या खाएं?',
+  'तनाव और चिंता कैसे कम करें?',
+  'अच्छी नींद के लिए टिप्स',
+  'डॉक्टर अपॉइंटमेंट कैसे लें?',
 ]
 
 function formatTime() {
@@ -28,33 +38,59 @@ function formatTime() {
 }
 
 function renderMarkdown(text: string) {
-  // Simple markdown: bold, bullet points
   return text
+    // Markdown links [text](url)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="underline font-semibold" style="color:var(--brand)">$1</a>')
+    // Bold
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/^[-•] (.+)$/gm, '<span class="flex gap-2 mt-1"><span style="color:var(--brand)">•</span><span>$1</span></span>')
+    .replace(/__(.*?)__/g, '<strong>$1</strong>')
+    // Italic
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    // Bullet points
+    .replace(/^[-•*] (.+)$/gm, '<span class="flex gap-2 mt-1"><span style="color:var(--brand);font-weight:bold">•</span><span>$1</span></span>')
+    // Numbered lists
+    .replace(/^(\d+)\. (.+)$/gm, '<span class="flex gap-2 mt-1"><span class="font-bold text-xs" style="color:var(--brand)">$1.</span><span>$2</span></span>')
+    // Paragraph breaks
     .replace(/\n\n/g, '<br/><br/>')
+    // Single line break
     .replace(/\n/g, '<br/>')
 }
 
 export default function AIChatbot() {
   const { data: session } = useSession()
-  const role = (session?.user as any)?.role
+  const { language } = useLanguage()
 
   const [open, setOpen] = useState(false)
   const [minimized, setMinimized] = useState(false)
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '0',
-      role: 'assistant',
-      content: `Hello ${session?.user?.name?.split(' ')[0] || 'there'}! 👋 I'm **Aarogya**, your personal health assistant.\n\nI can help you with symptoms, health tips, medication questions, and navigating your records. What's on your mind?`,
-      time: formatTime(),
+  
+  const getInitialGreeting = useCallback(() => {
+    const firstName = session?.user?.name?.split(' ')[0] || ''
+    if (language === 'hi') {
+      return `नमस्ते ${firstName ? firstName + ' जी' : ''}! 🙏 मैं **आरोग्य** हूँ, आपका व्यक्तिगत स्वास्थ्य सहायक।\n\nमैं लक्षणों, स्वास्थ्य सलाह, दवाओं और आपकी मेडिकल रिपोर्ट्स को समझने में आपकी सहायता कर सकता हूँ। आज मैं आपकी क्या सहायता करूँ?`
     }
-  ])
+    return `Hello ${firstName || 'there'}! 👋 I'm **Aarogya**, your clinical health assistant.\n\nI can help you understand symptoms, medication schedules, lifestyle tips, and navigate your dashboard. What's on your mind today?`
+  }, [language, session?.user?.name])
+
+  const [messages, setMessages] = useState<Message[]>([])
+
+  useEffect(() => {
+    setMessages([
+      {
+        id: '0',
+        role: 'assistant',
+        content: getInitialGreeting(),
+        time: formatTime(),
+      }
+    ])
+  }, [getInitialGreeting])
+
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [unread, setUnread] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const quickPrompts = language === 'hi' ? QUICK_PROMPTS_HI : QUICK_PROMPTS_EN
 
   async function send(text?: string) {
     const msg = (text || input).trim()
@@ -68,7 +104,7 @@ export default function AIChatbot() {
     const history = messages.slice(-10).map(m => ({ role: m.role, content: m.content }))
 
     try {
-      const { data } = await axios.post('/api/ai/chat', { message: msg, history })
+      const { data } = await axios.post('/api/ai/chat', { message: msg, history, language })
       const botMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -81,7 +117,9 @@ export default function AIChatbot() {
       setMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Sorry, I\'m having trouble connecting. Please try again in a moment.',
+        content: language === 'hi'
+          ? 'क्षमा करें, सर्वर से जुड़ने में समस्या हुई। कृपया कुछ समय बाद पुनः प्रयास करें।'
+          : 'Sorry, I\'m having trouble connecting. Please try again in a moment.',
         time: formatTime(),
       }])
     } finally {
@@ -105,13 +143,12 @@ export default function AIChatbot() {
     setMessages([{
       id: '0',
       role: 'assistant',
-      content: `Hello again! How can I help you today?`,
+      content: language === 'hi'
+        ? `चैट रीसेट कर दी गई है। आज मैं आपकी क्या सहायता कर सकता हूँ?`
+        : `Chat cleared. How can I help you today?`,
       time: formatTime(),
     }])
   }
-
-  // Only render for patient role - MUST BE AFTER ALL HOOKS
-  if (role !== 'patient') return null
 
   return (
     <>
@@ -120,10 +157,10 @@ export default function AIChatbot() {
         {/* Chat Window */}
         {open && !minimized && (
           <div
-            className="w-[360px] rounded-2xl overflow-hidden flex flex-col shadow-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl"
+            className="w-[360px] sm:w-[400px] rounded-2xl overflow-hidden flex flex-col shadow-2xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl"
             style={{
               border: '1px solid var(--border)',
-              height: '520px',
+              height: '540px',
               animation: 'slideUp 0.25s ease',
             }}
           >
@@ -136,15 +173,17 @@ export default function AIChatbot() {
                   <Sparkles className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <p className="font-bold text-white text-sm">Aarogya AI</p>
+                  <p className="font-bold text-white text-sm">Aarogya AI (आरोग्य)</p>
                   <div className="flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-green-300 animate-pulse" />
-                    <p className="text-xs text-white/70">Health Assistant · Online</p>
+                    <p className="text-xs text-white/80">
+                      {language === 'hi' ? 'स्वास्थ्य सहायक · ऑनलाइन' : 'Health Assistant · Online'}
+                    </p>
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <button onClick={clearChat} title="Clear chat"
+                <button onClick={clearChat} title={language === 'hi' ? 'चैट रीसेट' : 'Clear chat'}
                   className="p-1.5 rounded-lg text-white/70 hover:text-white hover:bg-white/10 transition-colors">
                   <RefreshCw className="w-3.5 h-3.5" />
                 </button>
@@ -176,7 +215,7 @@ export default function AIChatbot() {
                   </div>
 
                   {/* Bubble */}
-                  <div className={`max-w-[78%] ${msg.role === 'user' ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
+                  <div className={`max-w-[82%] ${msg.role === 'user' ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
                     <div
                       className="px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed"
                       style={{
@@ -212,10 +251,10 @@ export default function AIChatbot() {
 
             {/* Quick prompts */}
             {messages.length <= 2 && !loading && (
-              <div className="px-4 pb-2 flex gap-2 flex-wrap flex-shrink-0">
-                {QUICK_PROMPTS.slice(0, 3).map(p => (
+              <div className="px-4 pb-2 flex gap-1.5 flex-wrap flex-shrink-0">
+                {quickPrompts.slice(0, 3).map(p => (
                   <button key={p} onClick={() => send(p)}
-                    className="text-xs px-2.5 py-1.5 rounded-full border transition-colors hover:border-teal-500"
+                    className="text-xs px-2.5 py-1.5 rounded-full border transition-colors hover:border-teal-500 text-left"
                     style={{ color: 'var(--brand)', borderColor: 'rgba(13,148,136,0.3)', background: 'rgba(13,148,136,0.05)' }}>
                     {p}
                   </button>
@@ -234,7 +273,7 @@ export default function AIChatbot() {
                     border: '1px solid var(--border)',
                     color: 'var(--text)',
                   }}
-                  placeholder="Ask about symptoms, health tips..."
+                  placeholder={language === 'hi' ? 'लक्षण, दवाएं, या स्वास्थ्य सलाह पूछें...' : 'Ask about symptoms, health tips...'}
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), send())}
@@ -256,8 +295,10 @@ export default function AIChatbot() {
                   }
                 </button>
               </div>
-              <p className="text-center text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-                Not a substitute for professional medical advice
+              <p className="text-center text-[11px] mt-1.5" style={{ color: 'var(--text-muted)' }}>
+                {language === 'hi'
+                  ? 'चिकित्सीय आपातकाल में तुरंत 112 या निकटतम अस्पताल जाएं'
+                  : 'Not a substitute for professional medical advice · Emergency: 112'}
               </p>
             </div>
           </div>
@@ -267,10 +308,10 @@ export default function AIChatbot() {
         {open && minimized && (
           <button
             onClick={() => setMinimized(false)}
-            className="flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl"
+            className="flex items-center gap-3 px-4 py-3 rounded-2xl shadow-xl transition-all hover:scale-105"
             style={{ background: 'linear-gradient(135deg, #0d9488, #0f766e)', color: '#fff' }}>
             <Sparkles className="w-4 h-4" />
-            <span className="text-sm font-semibold">Aarogya AI</span>
+            <span className="text-sm font-semibold">Aarogya AI (आरोग्य)</span>
             <ChevronDown className="w-4 h-4 rotate-180" />
           </button>
         )}

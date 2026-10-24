@@ -1,62 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
-import { connectDB } from '@/lib/db'
-import Medicine from '@/models/Medicine'
-import Hospital from '@/models/Hospital'
-import User from '@/models/User'
-import mongoose from 'mongoose'
+import { supabaseAdmin } from '@/lib/supabase'
 
-// GET - list all medicines for this hospital
 export async function GET(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  await connectDB()
-
   const role = (token as any).role
   const userId = (token as any).id
 
-  // Resolve hospitalId
   let hospitalId = (token as any).hospitalId
   if (!hospitalId && role === 'hospital_admin') {
-    const hospital = await Hospital.findOne({ adminId: userId }).lean()
-    if (hospital) hospitalId = (hospital as any)._id
+    const { data: hospital } = await supabaseAdmin
+      .from('hospitals')
+      .select('id')
+      .eq('admin_id', userId)
+      .single()
+    if (hospital) hospitalId = hospital.id
   }
 
   if (!hospitalId) return NextResponse.json({ medicines: [] })
 
   const { searchParams } = new URL(req.url)
-  const filter = searchParams.get('filter') // 'expired', 'low-stock', 'all'
+  const filter = searchParams.get('filter')
   const search = searchParams.get('search') || ''
 
-  const now = new Date()
-  const query: any = { hospitalId }
+  let query = supabaseAdmin
+    .from('medicines')
+    .select('*')
+    .eq('hospital_id', hospitalId)
+    .order('expiry_date', { ascending: true })
+
+  const now = new Date().toISOString().split('T')[0]
+  const soon = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
 
   if (filter === 'expired') {
-    query.expiryDate = { $lte: now }
+    query = query.lt('expiry_date', now)
   } else if (filter === 'expiring-soon') {
-    const soon = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) // 30 days
-    query.expiryDate = { $gt: now, $lte: soon }
-  } else if (filter === 'low-stock') {
-    query.$expr = { $lte: ['$quantity', '$minStockLevel'] }
+    query = query.gt('expiry_date', now).lte('expiry_date', soon)
   }
 
   if (search) {
-    query.$or = [
-      { name: { $regex: search, $options: 'i' } },
-      { genericName: { $regex: search, $options: 'i' } },
-      { batchNumber: { $regex: search, $options: 'i' } },
-    ]
+    query = query.or(`name.ilike.%${search}%,generic_name.ilike.%${search}%,batch_number.ilike.%${search}%`)
   }
 
-  const medicines = await Medicine.find(query)
-    .sort({ expiryDate: 1 })
-    .lean()
+  const { data: medicines, error } = await query
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ medicines })
+  // Low-stock filtering done in memory (can't do $expr in Supabase PostgREST easily)
+  const result = filter === 'low-stock'
+    ? (medicines || []).filter((m: any) => m.quantity <= m.min_stock_level)
+    : medicines
+
+  return NextResponse.json({ medicines: result })
 }
 
-// POST - add a new medicine
 export async function POST(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -66,14 +64,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  await connectDB()
-
   const userId = (token as any).id
   let hospitalId = (token as any).hospitalId
-
   if (!hospitalId && role === 'hospital_admin') {
-    const hospital = await Hospital.findOne({ adminId: userId }).lean()
-    if (hospital) hospitalId = (hospital as any)._id
+    const { data: hospital } = await supabaseAdmin.from('hospitals').select('id').eq('admin_id', userId).single()
+    if (hospital) hospitalId = hospital.id
   }
 
   if (!hospitalId) return NextResponse.json({ error: 'No hospital associated' }, { status: 400 })
@@ -85,52 +80,60 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Name, category, expiry date and quantity are required' }, { status: 400 })
   }
 
-  const medicine = await Medicine.create({
-    hospitalId,
-    name, genericName, category, manufacturer, batchNumber,
-    expiryDate: new Date(expiryDate),
-    quantity: Number(quantity),
-    minStockLevel: Number(minStockLevel) || 10,
-    unitPrice: Number(unitPrice) || 0,
-    sellingPrice: Number(sellingPrice) || 0,
-    unit: unit || 'tablet',
-    description,
-    addedBy: userId,
-  })
+  const { data: medicine, error } = await supabaseAdmin
+    .from('medicines')
+    .insert({
+      hospital_id: hospitalId,
+      name,
+      generic_name: genericName || '',
+      category,
+      manufacturer: manufacturer || '',
+      batch_number: batchNumber || '',
+      expiry_date: expiryDate,
+      quantity: Number(quantity),
+      min_stock_level: Number(minStockLevel) || 10,
+      unit_price: Number(unitPrice) || 0,
+      selling_price: Number(sellingPrice) || 0,
+      unit: unit || 'tablet',
+      description,
+      added_by: userId,
+    })
+    .select()
+    .single()
 
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ medicine }, { status: 201 })
 }
 
-// PATCH - update quantity or details
 export async function PATCH(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  await connectDB()
-  const body = await req.json()
-  const { id, ...updates } = body
+  const { id, ...updates } = await req.json()
+  const { data: medicine, error } = await supabaseAdmin
+    .from('medicines')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
 
-  const medicine = await Medicine.findByIdAndUpdate(id, updates, { new: true })
-  if (!medicine) return NextResponse.json({ error: 'Medicine not found' }, { status: 404 })
-
+  if (error || !medicine) return NextResponse.json({ error: error?.message || 'Medicine not found' }, { status: 404 })
   return NextResponse.json({ medicine })
 }
 
-// DELETE - remove a medicine
 export async function DELETE(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const role = (token as any).role
-  if (!['pharmacy', 'hospital_admin'].includes(role)) {
+  if (!['pharmacy', 'hospital_admin'].includes((token as any).role)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  await connectDB()
   const { searchParams } = new URL(req.url)
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
 
-  await Medicine.findByIdAndDelete(id)
+  const { error } = await supabaseAdmin.from('medicines').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })
 }

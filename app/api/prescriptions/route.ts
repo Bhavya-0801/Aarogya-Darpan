@@ -1,46 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
-import { connectDB } from '@/lib/db'
-import Prescription from '@/models/Prescription'
-import Patient from '@/models/Patient'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  await connectDB()
   const { searchParams } = new URL(req.url)
   const patientId = searchParams.get('patientId')
   const role = (token as any).role
 
-  const filter: any = {}
+  let query = supabaseAdmin
+    .from('prescriptions')
+    .select(`
+      *,
+      patient:patients(id, uhid),
+      doctor:users!prescriptions_doctor_id_fkey(id, name, specialization),
+      hospital:hospitals(id, name)
+    `)
+    .order('created_at', { ascending: false })
+    .limit(100)
 
   if (patientId) {
-    filter.patientId = patientId
+    query = query.eq('patient_id', patientId)
   } else if (role === 'doctor') {
-    filter.doctorId = (token as any).id
+    query = query.eq('doctor_id', (token as any).id)
   } else if (role === 'patient') {
-    const patient = await Patient.findOne({ userId: (token as any).id })
+    const { data: patient } = await supabaseAdmin
+      .from('patients')
+      .select('id')
+      .eq('user_id', (token as any).id)
+      .single()
     if (!patient) return NextResponse.json({ prescriptions: [] })
-    filter.patientId = patient._id
+    query = query.eq('patient_id', patient.id)
   } else if (['hospital_admin', 'receptionist'].includes(role)) {
-    filter.hospitalId = (token as any).hospitalId
+    query = query.eq('hospital_id', (token as any).hospitalId)
   } else if (role === 'pharmacy') {
-    // Pharmacy sees all prescriptions — optionally filter by hospital if hospitalId bound
     const hospitalId = (token as any).hospitalId
-    if (hospitalId) filter.hospitalId = hospitalId
-    // else no filter — pharmacy sees all
+    if (hospitalId) query = query.eq('hospital_id', hospitalId)
   }
-  // lab_technician: no prescriptions view needed
 
-  const prescriptions = await Prescription.find(filter)
-    .populate('patientId', 'uhid')
-    .populate('doctorId', 'name specialization')
-    .populate('hospitalId', 'name')
-    .sort({ createdAt: -1 })
-    .limit(100)
-    .lean()
-
+  const { data: prescriptions, error } = await query
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ prescriptions })
 }
 
@@ -51,26 +52,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  await connectDB()
   const body = await req.json()
 
-  // Ensure unique token
-  let tokenNumber = Math.floor(100000 + Math.random() * 900000).toString()
-  let exists = await Prescription.findOne({ tokenNumber })
+  // Generate unique token
+  let tokenNumber: string
   let attempts = 0
-  while (exists && attempts < 10) {
+  while (true) {
     tokenNumber = Math.floor(100000 + Math.random() * 900000).toString()
-    exists = await Prescription.findOne({ tokenNumber })
-    attempts++
+    const { data: existing } = await supabaseAdmin
+      .from('prescriptions')
+      .select('id')
+      .eq('token_number', tokenNumber)
+      .single()
+    if (!existing) break
+    if (++attempts > 10) break
   }
 
-  const prescription = await Prescription.create({
-    ...body,
-    tokenNumber,
-    doctorId: (token as any).id,
-    hospitalId: body.hospitalId || (token as any).hospitalId,
-    dispensed: false,
-  })
+  const { data: prescription, error } = await supabaseAdmin
+    .from('prescriptions')
+    .insert({
+      ...body,
+      token_number: tokenNumber!,
+      doctor_id: (token as any).id,
+      hospital_id: body.hospital_id || body.hospitalId || (token as any).hospitalId,
+      dispensed: false,
+    })
+    .select()
+    .single()
 
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ prescription }, { status: 201 })
 }

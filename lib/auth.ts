@@ -1,8 +1,7 @@
 import { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
-import { connectDB } from '@/lib/db'
-import User from '@/models/User'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -15,20 +14,24 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null
 
-        await connectDB()
-        const user = await User.findOne({ email: credentials.email.toLowerCase() })
-        if (!user) return null
-        if (!user.isActive) return null
+        const { data: user, error } = await supabaseAdmin
+          .from('users')
+          .select('id, name, email, password_hash, role, hospital_id, is_active')
+          .eq('email', credentials.email.toLowerCase())
+          .single()
 
-        const valid = await bcrypt.compare(credentials.password, user.passwordHash)
+        if (error || !user) return null
+        if (!user.is_active) return null
+
+        const valid = await bcrypt.compare(credentials.password, user.password_hash)
         if (!valid) return null
 
         return {
-          id: user._id.toString(),
+          id: user.id,
           name: user.name,
           email: user.email,
           role: user.role,
-          hospitalId: user.hospitalId?.toString() || null,
+          hospitalId: user.hospital_id || null,
         }
       },
     }),

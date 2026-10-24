@@ -1,36 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { connectDB } from '@/lib/db'
-import Hospital from '@/models/Hospital'
-import User from '@/models/User'
+import { supabaseAdmin } from '@/lib/supabase'
 
-// Fully public — no auth required. Used in registration dropdown.
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   try {
-    await connectDB()
     const { searchParams } = new URL(req.url)
     const hospitalId = searchParams.get('hospitalId')
 
     if (hospitalId) {
-      const doctors = await User.find({ hospitalId, role: 'doctor' })
-        .select('name specialization opdFee department')
-        .lean()
+      const { data: doctors } = await supabaseAdmin
+        .from('users')
+        .select('id, name, specialization, opd_fee, department')
+        .eq('hospital_id', hospitalId)
+        .eq('role', 'doctor')
+        .eq('is_active', true)
+
       return NextResponse.json({ doctors })
     }
 
-    // Return all hospitals with id + name + location
-    const hospitals = await Hospital.find({})
-      .select('_id name address phone')
-      .lean()
+    const { data: hospitals } = await supabaseAdmin
+      .from('hospitals')
+      .select('id, name, city, state, phone')
 
-    const formatted = hospitals.map((h: any) => ({
-      _id: h._id.toString(),
-      name: h.name,
-      city: h.address?.city || '',
-      state: h.address?.state || '',
-      phone: h.phone || '',
-    }))
-
-    return NextResponse.json({ hospitals: formatted })
+    return NextResponse.json({ hospitals: hospitals || [] })
   } catch (err) {
     console.error('[Hospitals Public API]', err)
     return NextResponse.json({ hospitals: [] })

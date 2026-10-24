@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
-import { connectDB } from '@/lib/db'
-import Patient from '@/models/Patient'
-import Prescription from '@/models/Prescription'
-import LabReport from '@/models/LabReport'
-import AccessRequest from '@/models/AccessRequest'
+import { supabaseAdmin } from '@/lib/supabase'
 
-// GET /api/records?patientId=xxx — for doctors with accepted access
 export async function GET(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -16,29 +11,43 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  await connectDB()
   const { searchParams } = new URL(req.url)
   const patientId = searchParams.get('patientId')
   if (!patientId) return NextResponse.json({ error: 'patientId required' }, { status: 400 })
 
   // If doctor, verify accepted access request
   if (role === 'doctor') {
-    const patient = await Patient.findById(patientId)
-    if (!patient) return NextResponse.json({ error: 'Patient not found' }, { status: 404 })
-
-    const access = await AccessRequest.findOne({
-      doctorId: (token as any).id,
-      patientId,
-      status: 'accepted',
-    })
+    const { data: access } = await supabaseAdmin
+      .from('access_requests')
+      .select('id')
+      .eq('doctor_id', (token as any).id)
+      .eq('patient_id', patientId)
+      .eq('status', 'accepted')
+      .single()
     if (!access) return NextResponse.json({ error: 'No accepted access for this patient' }, { status: 403 })
   }
 
-  const [patient, prescriptions, labReports] = await Promise.all([
-    Patient.findById(patientId).populate('userId', 'name email phone').lean(),
-    Prescription.find({ patientId }).populate('doctorId', 'name specialization').sort({ createdAt: -1 }).lean(),
-    LabReport.find({ patientId }).populate('requestedBy', 'name').sort({ createdAt: -1 }).lean(),
+  const [patientRes, prescriptionsRes, labReportsRes] = await Promise.all([
+    supabaseAdmin
+      .from('patients')
+      .select('*, user:users(name, email, phone)')
+      .eq('id', patientId)
+      .single(),
+    supabaseAdmin
+      .from('prescriptions')
+      .select('*, doctor:users!prescriptions_doctor_id_fkey(id, name, specialization)')
+      .eq('patient_id', patientId)
+      .order('created_at', { ascending: false }),
+    supabaseAdmin
+      .from('lab_reports')
+      .select('*, requested_by_user:users!lab_reports_requested_by_fkey(id, name)')
+      .eq('patient_id', patientId)
+      .order('created_at', { ascending: false }),
   ])
 
-  return NextResponse.json({ patient, prescriptions, labReports })
+  return NextResponse.json({
+    patient: patientRes.data,
+    prescriptions: prescriptionsRes.data || [],
+    labReports: labReportsRes.data || [],
+  })
 }

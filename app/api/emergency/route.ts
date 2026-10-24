@@ -1,23 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
-import { connectDB } from '@/lib/db'
-import EmergencyRegistration from '@/models/EmergencyRegistration'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  await connectDB()
   const { searchParams } = new URL(req.url)
   const status = searchParams.get('status') || 'active'
+  const hospitalId = (token as any).hospitalId
 
-  const registrations = await EmergencyRegistration.find({
-    hospitalId: (token as any).hospitalId,
-    status,
-  })
-    .sort({ admittedAt: -1 })
-    .lean()
+  const { data: registrations, error } = await supabaseAdmin
+    .from('emergency_registrations')
+    .select('*')
+    .eq('hospital_id', hospitalId)
+    .eq('status', status)
+    .order('admitted_at', { ascending: false })
 
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ registrations })
 }
 
@@ -28,23 +28,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  await connectDB()
   const body = await req.json()
-  const reg = await EmergencyRegistration.create({
-    ...body,
-    hospitalId: (token as any).hospitalId,
-    createdBy: (token as any).id,
-  })
+  const tempId = `TEMP-${Date.now().toString(36).toUpperCase()}`
 
-  return NextResponse.json({ registration: reg }, { status: 201 })
+  const { data: registration, error } = await supabaseAdmin
+    .from('emergency_registrations')
+    .insert({
+      ...body,
+      temp_id: tempId,
+      hospital_id: (token as any).hospitalId,
+      created_by: (token as any).id,
+    })
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ registration }, { status: 201 })
 }
 
 export async function PATCH(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  await connectDB()
   const { id, ...updates } = await req.json()
-  const reg = await EmergencyRegistration.findByIdAndUpdate(id, updates, { new: true })
-  return NextResponse.json({ registration: reg })
+  const { data: registration, error } = await supabaseAdmin
+    .from('emergency_registrations')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ registration })
 }

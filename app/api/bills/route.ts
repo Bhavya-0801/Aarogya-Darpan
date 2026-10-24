@@ -1,49 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
-import { connectDB } from '@/lib/db'
-import Bill from '@/models/Bill'
-import Patient from '@/models/Patient'
+import { supabaseAdmin } from '@/lib/supabase'
 
 function generateBillNumber() {
   const date = new Date()
-  const prefix = 'INV'
   const year = date.getFullYear().toString().slice(-2)
   const month = (date.getMonth() + 1).toString().padStart(2, '0')
   const random = Math.floor(Math.random() * 9999).toString().padStart(4, '0')
-  return `${prefix}${year}${month}${random}`
+  return `INV${year}${month}${random}`
 }
 
 export async function GET(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  await connectDB()
   const { searchParams } = new URL(req.url)
   const patientIdParam = searchParams.get('patientId')
   const status = searchParams.get('status')
   const role = (token as any).role
 
-  const filter: any = {}
+  let query = supabaseAdmin
+    .from('bills')
+    .select('*, patient:patients(id, uhid), created_by_user:users!bills_created_by_fkey(id, name)')
+    .order('created_at', { ascending: false })
+    .limit(100)
 
   if (role === 'patient') {
-    // Patients fetch their own bills — no hospitalId in JWT
-    const patient = await Patient.findOne({ userId: (token as any).id })
+    const { data: patient } = await supabaseAdmin
+      .from('patients')
+      .select('id')
+      .eq('user_id', (token as any).id)
+      .single()
     if (!patient) return NextResponse.json({ bills: [] })
-    filter.patientId = patient._id
+    query = query.eq('patient_id', patient.id)
   } else {
-    // Staff/admin always have hospitalId
-    filter.hospitalId = (token as any).hospitalId
-    if (patientIdParam) filter.patientId = patientIdParam
-    if (status) filter.status = status
+    query = query.eq('hospital_id', (token as any).hospitalId)
+    if (patientIdParam) query = query.eq('patient_id', patientIdParam)
+    if (status) query = query.eq('status', status)
   }
 
-  const bills = await Bill.find(filter)
-    .populate('patientId', 'uhid')
-    .populate('createdBy', 'name')
-    .sort({ createdAt: -1 })
-    .limit(100)
-    .lean()
-
+  const { data: bills, error } = await query
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ bills })
 }
 
@@ -54,16 +51,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  await connectDB()
   const body = await req.json()
 
-  const bill = await Bill.create({
-    ...body,
-    billNumber: generateBillNumber(),
-    hospitalId: (token as any).hospitalId,
-    createdBy: (token as any).id,
-  })
+  const { data: bill, error } = await supabaseAdmin
+    .from('bills')
+    .insert({
+      ...body,
+      bill_number: generateBillNumber(),
+      hospital_id: (token as any).hospitalId,
+      created_by: (token as any).id,
+    })
+    .select()
+    .single()
 
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ bill }, { status: 201 })
 }
 
@@ -71,10 +72,14 @@ export async function PATCH(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  await connectDB()
-  const body = await req.json()
-  const { id, ...updates } = body
+  const { id, ...updates } = await req.json()
+  const { data: bill, error } = await supabaseAdmin
+    .from('bills')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
 
-  const bill = await Bill.findByIdAndUpdate(id, updates, { new: true })
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ bill })
 }

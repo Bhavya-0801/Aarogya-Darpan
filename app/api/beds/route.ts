@@ -1,21 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
-import { connectDB } from '@/lib/db'
-import Bed from '@/models/Bed'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  await connectDB()
   const hospitalId = (token as any).hospitalId
   if (!hospitalId) return NextResponse.json({ beds: [] })
 
-  const beds = await Bed.find({ hospitalId })
-    .populate('patientId', 'uhid')
-    .sort({ ward: 1, bedNumber: 1 })
-    .lean()
+  const { data: beds, error } = await supabaseAdmin
+    .from('beds')
+    .select('*, patient:patients(id, uhid)')
+    .eq('hospital_id', hospitalId)
+    .order('ward', { ascending: true })
+    .order('bed_number', { ascending: true })
 
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ beds })
 }
 
@@ -26,9 +27,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  await connectDB()
   const body = await req.json()
-  const bed = await Bed.create({ ...body, hospitalId: (token as any).hospitalId })
+  const { data: bed, error } = await supabaseAdmin
+    .from('beds')
+    .insert({ ...body, hospital_id: (token as any).hospitalId })
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ bed }, { status: 201 })
 }
 
@@ -36,9 +42,15 @@ export async function PATCH(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  await connectDB()
   const { id, ...updates } = await req.json()
-  const bed = await Bed.findByIdAndUpdate(id, updates, { new: true })
+  const { data: bed, error } = await supabaseAdmin
+    .from('beds')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ bed })
 }
 
@@ -49,11 +61,11 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  await connectDB()
   const { searchParams } = new URL(req.url)
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
 
-  await Bed.findByIdAndDelete(id)
+  const { error } = await supabaseAdmin.from('beds').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ success: true })
 }

@@ -1,19 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
-import { connectDB } from '@/lib/db'
-import Notification from '@/models/Notification'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  await connectDB()
-  const notifications = await Notification.find({ userId: (token as any).id })
-    .sort({ createdAt: -1 })
+  const { data: notifications, error } = await supabaseAdmin
+    .from('notifications')
+    .select('*')
+    .eq('user_id', (token as any).id)
+    .order('created_at', { ascending: false })
     .limit(50)
-    .lean()
 
-  const unreadCount = notifications.filter(n => !n.read).length
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const unreadCount = (notifications || []).filter((n: any) => !n.read).length
   return NextResponse.json({ notifications, unreadCount })
 }
 
@@ -21,16 +23,23 @@ export async function PATCH(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  await connectDB()
   const { id, markAllRead } = await req.json()
 
   if (markAllRead) {
-    await Notification.updateMany({ userId: (token as any).id }, { read: true })
+    const { error } = await supabaseAdmin
+      .from('notifications')
+      .update({ read: true })
+      .eq('user_id', (token as any).id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ success: true })
   }
 
   if (id) {
-    await Notification.findByIdAndUpdate(id, { read: true })
+    const { error } = await supabaseAdmin
+      .from('notifications')
+      .update({ read: true })
+      .eq('id', id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ success: true })
   }
 

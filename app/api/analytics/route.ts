@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
-import { connectDB } from '@/lib/db'
-import Patient from '@/models/Patient'
-import Appointment from '@/models/Appointment'
-import LabReport from '@/models/LabReport'
-import Bill from '@/models/Bill'
-import Prescription from '@/models/Prescription'
-import Hospital from '@/models/Hospital'
-import mongoose from 'mongoose'
+import { supabaseAdmin } from '@/lib/supabase'
 
-const EMPTY = { hospital: null, stats: { totalPatients: 0, pendingLabs: 0, totalPrescriptions: 0, todayRevenue: 0, todayAppointments: 0, totalBeds: 0 }, weeklyTrend: [], appointmentsByType: [] }
+export const dynamic = 'force-dynamic'
+
+const EMPTY = {
+  hospital: null,
+  stats: { totalPatients: 0, pendingLabs: 0, totalPrescriptions: 0, todayRevenue: 0, todayAppointments: 0, totalBeds: 0 },
+  weeklyTrend: [],
+  appointmentsByType: [],
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -23,71 +23,89 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(EMPTY)
     }
 
-    await connectDB()
-
-    // Resolve hospitalId — from JWT OR look up from Hospital collection
-    let hospitalId: string | null = (token as any).hospitalId?.toString() || null
+    let hospitalId: string | null = (token as any).hospitalId || null
 
     if (!hospitalId && role === 'hospital_admin') {
-      const h = await Hospital.findOne({ adminId: userId }).select('_id').lean()
-      if (h) hospitalId = (h as any)._id.toString()
+      const { data: h } = await supabaseAdmin
+        .from('hospitals')
+        .select('id')
+        .eq('admin_id', userId)
+        .single()
+      if (h) hospitalId = h.id
     }
 
     if (!hospitalId) return NextResponse.json(EMPTY)
 
-    let hospitalObjId: mongoose.Types.ObjectId
-    try {
-      hospitalObjId = new mongoose.Types.ObjectId(hospitalId)
-    } catch {
-      return NextResponse.json(EMPTY)
-    }
+    // Fetch hospital info
+    const { data: hospital } = await supabaseAdmin
+      .from('hospitals')
+      .select('id, name, city, state, phone, email, license_number, departments, total_beds')
+      .eq('id', hospitalId)
+      .single()
 
-    const hospital = await Hospital.findById(hospitalObjId)
-      .select('name address phone email licenseNumber departments totalBeds')
-      .lean()
-
-    const todayStart = new Date(new Date().setHours(0, 0, 0, 0))
-    const todayEnd = new Date(new Date().setHours(23, 59, 59, 999))
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0)
+    const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999)
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
 
+    // Run all counts in parallel
     const [
-      totalPatients, pendingLabs, totalPrescriptions, todayBills,
-      weeklyTrend, appointmentsByType, todayAppointments, totalBeds,
+      patientsRes,
+      labsRes,
+      prescriptionsRes,
+      todayBillsRes,
+      todayApptRes,
+      bedsRes,
+      weeklyApptRes,
+      apptTypeRes,
     ] = await Promise.all([
-      Patient.countDocuments({ hospitalId: hospitalObjId }).catch(() => 0),
-      LabReport.countDocuments({ hospitalId: hospitalObjId, status: 'pending' }).catch(() => 0),
-      Prescription.countDocuments({ hospitalId: hospitalObjId }).catch(() => 0),
-      Bill.find({ hospitalId: hospitalObjId, createdAt: { $gte: todayStart } }).select('paidAmount').catch(() => []),
-      Appointment.aggregate([
-        { $match: { hospitalId: hospitalObjId, scheduledAt: { $gte: weekAgo } } },
-        { $group: { _id: { $dateToString: { format: '%a', date: '$scheduledAt' } }, count: { $sum: 1 } } },
-        { $sort: { _id: 1 } },
-      ]).catch(() => []),
-      Appointment.aggregate([
-        { $match: { hospitalId: hospitalObjId } },
-        { $group: { _id: '$type', count: { $sum: 1 } } },
-      ]).catch(() => []),
-      Appointment.countDocuments({ hospitalId: hospitalObjId, scheduledAt: { $gte: todayStart, $lte: todayEnd } }).catch(() => 0),
-      (async () => { try { const Bed = (await import('@/models/Bed')).default; return Bed.countDocuments({ hospitalId: hospitalObjId }) } catch { return 0 } })(),
+      supabaseAdmin.from('patients').select('id', { count: 'exact', head: true }).eq('hospital_id', hospitalId),
+      supabaseAdmin.from('lab_reports').select('id', { count: 'exact', head: true }).eq('hospital_id', hospitalId).eq('status', 'pending'),
+      supabaseAdmin.from('prescriptions').select('id', { count: 'exact', head: true }).eq('hospital_id', hospitalId),
+      supabaseAdmin.from('bills').select('paid_amount').eq('hospital_id', hospitalId).gte('created_at', todayStart.toISOString()),
+      supabaseAdmin.from('appointments').select('id', { count: 'exact', head: true }).eq('hospital_id', hospitalId).gte('scheduled_at', todayStart.toISOString()).lte('scheduled_at', todayEnd.toISOString()),
+      supabaseAdmin.from('beds').select('id', { count: 'exact', head: true }).eq('hospital_id', hospitalId),
+      supabaseAdmin.from('appointments').select('scheduled_at').eq('hospital_id', hospitalId).gte('scheduled_at', weekAgo.toISOString()),
+      supabaseAdmin.from('appointments').select('type').eq('hospital_id', hospitalId),
     ])
 
-    const todayRevenue = Array.isArray(todayBills)
-      ? todayBills.reduce((s: number, b: any) => s + (b.paidAmount || 0), 0)
-      : 0
+    const todayRevenue = (todayBillsRes.data || []).reduce((s: number, b: any) => s + (Number(b.paid_amount) || 0), 0)
+
+    // Build weekly trend (group by day-of-week)
+    const dayMap: Record<string, number> = {}
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    (weeklyApptRes.data || []).forEach((a: any) => {
+      const d = dayNames[new Date(a.scheduled_at).getDay()]
+      dayMap[d] = (dayMap[d] || 0) + 1
+    })
+    const weeklyTrend = Object.entries(dayMap).map(([_id, count]) => ({ _id, count }))
+
+    // Build appointments by type
+    const typeMap: Record<string, number> = {};
+    (apptTypeRes.data || []).forEach((a: any) => {
+      typeMap[a.type] = (typeMap[a.type] || 0) + 1
+    })
+    const appointmentsByType = Object.entries(typeMap).map(([_id, count]) => ({ _id, count }))
 
     return NextResponse.json({
       hospital: hospital ? {
-        name: (hospital as any).name,
+        name: hospital.name,
         hospitalId,
-        city: (hospital as any).address?.city,
-        state: (hospital as any).address?.state,
-        phone: (hospital as any).phone,
-        email: (hospital as any).email,
-        licenseNumber: (hospital as any).licenseNumber,
-        departments: (hospital as any).departments || [],
-        totalBeds: (hospital as any).totalBeds || 0,
+        city: hospital.city,
+        state: hospital.state,
+        phone: hospital.phone,
+        email: hospital.email,
+        licenseNumber: hospital.license_number,
+        departments: hospital.departments || [],
+        totalBeds: hospital.total_beds || 0,
       } : null,
-      stats: { totalPatients, pendingLabs, totalPrescriptions, todayRevenue, todayAppointments, totalBeds },
+      stats: {
+        totalPatients: patientsRes.count || 0,
+        pendingLabs: labsRes.count || 0,
+        totalPrescriptions: prescriptionsRes.count || 0,
+        todayRevenue,
+        todayAppointments: todayApptRes.count || 0,
+        totalBeds: bedsRes.count || 0,
+      },
       weeklyTrend,
       appointmentsByType,
     })

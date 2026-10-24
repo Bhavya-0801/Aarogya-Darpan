@@ -1,29 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
-import { connectDB } from '@/lib/db'
-import Patient from '@/models/Patient'
-import User from '@/models/User'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  await connectDB()
-
-  // For non-patient roles (doctor, admin, etc.): return user profile from User model
   const role = (token as any).role
+
   if (role !== 'patient') {
-    const user = await User.findById((token as any).id)
-      .select('name email phone role specialization department opdFee hospitalId')
-      .lean()
+    const { data: user } = await supabaseAdmin
+      .from('users')
+      .select('id, name, email, phone, role, specialization, department, opd_fee, hospital_id')
+      .eq('id', (token as any).id)
+      .single()
     return NextResponse.json({ profile: null, user })
   }
 
-  const patient = await Patient.findOne({ userId: (token as any).id })
-    .populate('userId', 'name email phone profileImage role')
-    .lean()
+  const { data: patient, error } = await supabaseAdmin
+    .from('patients')
+    .select('*, user:users(id, name, email, phone, profile_image, role)')
+    .eq('user_id', (token as any).id)
+    .single()
 
-  if (!patient) return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+  if (error || !patient) return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
   return NextResponse.json({ profile: patient })
 }
 
@@ -31,37 +31,43 @@ export async function PATCH(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  await connectDB()
   const body = await req.json()
   const { name, phone, allergies, chronicConditions, emergencyContact, bloodGroup, address } = body
 
-  // Update user fields
   if (name || phone) {
-    await User.findByIdAndUpdate((token as any).id, {
-      ...(name && { name }),
-      ...(phone && { phone }),
-    })
+    await supabaseAdmin
+      .from('users')
+      .update({ ...(name && { name }), ...(phone && { phone }) })
+      .eq('id', (token as any).id)
   }
 
   const role = (token as any).role
   if (role !== 'patient') {
-    const user = await User.findById((token as any).id).lean()
+    const { data: user } = await supabaseAdmin
+      .from('users')
+      .select('id, name, email, phone, role, specialization, department, opd_fee, hospital_id')
+      .eq('id', (token as any).id)
+      .single()
     return NextResponse.json({ profile: null, user })
   }
 
-  // Update patient fields
   const updateFields: any = {}
   if (allergies !== undefined) updateFields.allergies = allergies
-  if (chronicConditions !== undefined) updateFields.chronicConditions = chronicConditions
-  if (emergencyContact !== undefined) updateFields.emergencyContact = emergencyContact
-  if (bloodGroup !== undefined) updateFields.bloodGroup = bloodGroup
+  if (chronicConditions !== undefined) updateFields.chronic_conditions = chronicConditions
+  if (bloodGroup !== undefined) updateFields.blood_group = bloodGroup
   if (address !== undefined) updateFields.address = address
+  if (emergencyContact !== undefined) {
+    updateFields.emergency_name = emergencyContact.name
+    updateFields.emergency_relation = emergencyContact.relation
+    updateFields.emergency_phone = emergencyContact.phone
+  }
 
-  const patient = await Patient.findOneAndUpdate(
-    { userId: (token as any).id },
-    updateFields,
-    { new: true }
-  ).populate('userId', 'name email phone')
+  const { data: patient } = await supabaseAdmin
+    .from('patients')
+    .update(updateFields)
+    .eq('user_id', (token as any).id)
+    .select('*, user:users(id, name, email, phone)')
+    .single()
 
   return NextResponse.json({ profile: patient })
 }

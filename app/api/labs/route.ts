@@ -1,47 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
-import { connectDB } from '@/lib/db'
-import LabReport from '@/models/LabReport'
-import Patient from '@/models/Patient'
-import Notification from '@/models/Notification'
+import { supabaseAdmin } from '@/lib/supabase'
 
 export async function GET(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  await connectDB()
   const { searchParams } = new URL(req.url)
   const role = (token as any).role
   const patientId = searchParams.get('patientId')
 
-  const filter: any = {}
+  let query = supabaseAdmin
+    .from('lab_reports')
+    .select(`
+      *,
+      patient:patients(id, uhid),
+      requested_by_user:users!lab_reports_requested_by_fkey(id, name),
+      processed_by_user:users!lab_reports_processed_by_fkey(id, name)
+    `)
+    .order('created_at', { ascending: false })
+    .limit(100)
+
   if (patientId) {
-    filter.patientId = patientId
+    query = query.eq('patient_id', patientId)
   } else if (role === 'patient') {
-    const patient = await Patient.findOne({ userId: (token as any).id })
+    const { data: patient } = await supabaseAdmin
+      .from('patients')
+      .select('id')
+      .eq('user_id', (token as any).id)
+      .single()
     if (!patient) return NextResponse.json({ reports: [] })
-    filter.patientId = patient._id
-  } else if (role === 'lab_technician' || role === 'hospital_admin' || role === 'doctor' || role === 'receptionist') {
-    filter.hospitalId = (token as any).hospitalId
+    query = query.eq('patient_id', patient.id)
+  } else {
+    query = query.eq('hospital_id', (token as any).hospitalId)
   }
 
-  const reports = await LabReport.find(filter)
-    .populate('patientId', 'uhid')
-    .populate('requestedBy', 'name')
-    .populate('processedBy', 'name')
-    .sort({ createdAt: -1 })
-    .limit(100)
-    .lean()
+  const { data: reports, error } = await query
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Flatten for easier frontend use
-  const mapped = reports.map((r: any) => ({
+  const mapped = (reports || []).map((r: any) => ({
     ...r,
     testName: r.tests?.[0]?.name || 'Lab Test',
     testType: r.tests?.[0]?.unit || '',
     result: r.tests?.[0]?.result || '',
     referenceRange: r.tests?.[0]?.referenceRange || '',
     priority: r.urgency === 'urgent' || r.urgency === 'stat' ? 'urgent' : 'normal',
-    technician: r.processedBy,
+    technician: r.processed_by_user,
   }))
 
   return NextResponse.json({ reports: mapped })
@@ -54,20 +58,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
-  await connectDB()
   const body = await req.json()
   const { patientId, testName, testType, priority, notes, hospitalId } = body
 
-  const report = await LabReport.create({
-    patientId,
-    hospitalId: hospitalId || (token as any).hospitalId,
-    requestedBy: (token as any).id,
-    status: 'pending',
-    urgency: priority === 'urgent' ? 'urgent' : 'routine',
-    notes,
-    tests: [{ name: testName, status: 'pending', unit: testType || '' }],
-  })
+  const { data: report, error } = await supabaseAdmin
+    .from('lab_reports')
+    .insert({
+      patient_id: patientId,
+      hospital_id: hospitalId || (token as any).hospitalId,
+      requested_by: (token as any).id,
+      status: 'pending',
+      urgency: priority === 'urgent' ? 'urgent' : 'routine',
+      notes,
+      tests: [{ name: testName, status: 'pending', unit: testType || '' }],
+    })
+    .select()
+    .single()
 
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ report }, { status: 201 })
 }
 
@@ -75,45 +83,62 @@ export async function PATCH(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  await connectDB()
   const body = await req.json()
   const { id, status, result, referenceRange, notes, fileUrl } = body
 
   const updates: any = {}
-  if (status) updates.status = status
   if (notes) updates.notes = notes
-  if (fileUrl) updates.reportUrl = fileUrl
+  if (fileUrl) updates.report_url = fileUrl
 
   if (status === 'completed') {
-    updates.processedBy = (token as any).id
-    updates.reportedAt = new Date()
-    // Update first test
-    updates.$set = {
-      'tests.0.result': result || '',
-      'tests.0.referenceRange': referenceRange || '',
-      'tests.0.status': 'completed',
+    updates.status = 'completed'
+    updates.processed_by = (token as any).id
+    updates.reported_at = new Date().toISOString()
+
+    // Update the first test item in JSONB
+    const { data: current } = await supabaseAdmin
+      .from('lab_reports')
+      .select('tests, patient_id')
+      .eq('id', id)
+      .single()
+
+    if (current?.tests) {
+      const tests = [...current.tests]
+      if (tests[0]) {
+        tests[0] = { ...tests[0], result: result || '', referenceRange: referenceRange || '', status: 'completed' }
+      }
+      updates.tests = tests
     }
-    delete updates.status
 
     // Notify patient
-    const report = await LabReport.findById(id).populate('patientId')
-    if (report) {
-      const patient = await Patient.findById(report.patientId)
-      if (patient) {
-        await Notification.create({
-          userId: patient.userId,
+    if (current?.patient_id) {
+      const { data: patient } = await supabaseAdmin
+        .from('patients')
+        .select('user_id')
+        .eq('id', current.patient_id)
+        .single()
+      if (patient?.user_id) {
+        await supabaseAdmin.from('notifications').insert({
+          user_id: patient.user_id,
           type: 'lab_result',
           title: 'Lab Report Ready',
-          message: `Your lab report is ready. Check the Lab Reports section to view your results.`,
+          message: 'Your lab report is ready. Check the Lab Reports section to view your results.',
           data: { reportId: id },
           actionable: false,
         })
       }
     }
-    const updated = await LabReport.findByIdAndUpdate(id, { ...updates, status: 'completed' }, { new: true })
-    return NextResponse.json({ report: updated })
+  } else if (status) {
+    updates.status = status
   }
 
-  const report = await LabReport.findByIdAndUpdate(id, updates, { new: true })
+  const { data: report, error } = await supabaseAdmin
+    .from('lab_reports')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ report })
 }

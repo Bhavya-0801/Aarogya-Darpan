@@ -3,7 +3,7 @@ import { getToken } from 'next-auth/jwt'
 import type { NextRequest } from 'next/server'
 
 const PUBLIC_ROUTES = ['/', '/auth/login', '/auth/register']
-const API_PUBLIC = ['/api/auth', '/api/register']
+const API_PUBLIC = ['/api/auth', '/api/register', '/api/hospitals/public']
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl
@@ -41,5 +41,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|public).*)'],
+  matcher: ['/dashboard/:path*', '/api/:path*'],
 }

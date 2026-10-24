@@ -88,6 +88,8 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       hospital: hospital ? {
+        ...hospital,
+        _id: hospital.id,
         name: hospital.name,
         hospitalId,
         city: hospital.city,

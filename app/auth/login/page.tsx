@@ -17,13 +17,12 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     const result = await signIn('credentials', { email, password, redirect: false })
-    setLoading(false)
-
     if (result?.error) {
+      setLoading(false)
       toast.error('Invalid email or password')
     } else {
       toast.success('Welcome back!')
-      router.push('/dashboard')
+      window.location.href = '/dashboard'
     }
   }
 

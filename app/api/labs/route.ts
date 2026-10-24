@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { supabaseAdmin } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -40,6 +42,7 @@ export async function GET(req: NextRequest) {
 
   const mapped = (reports || []).map((r: any) => ({
     ...r,
+    _id: r.id,
     testName: r.tests?.[0]?.name || 'Lab Test',
     testType: r.tests?.[0]?.unit || '',
     result: r.tests?.[0]?.result || '',
@@ -76,7 +79,7 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ report }, { status: 201 })
+  return NextResponse.json({ report: { ...report, _id: report.id } }, { status: 201 })
 }
 
 export async function PATCH(req: NextRequest) {
@@ -84,7 +87,8 @@ export async function PATCH(req: NextRequest) {
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { id, status, result, referenceRange, notes, fileUrl } = body
+  const id = body.id || body._id
+  const { status, result, referenceRange, notes, fileUrl } = body
 
   const updates: any = {}
   if (notes) updates.notes = notes

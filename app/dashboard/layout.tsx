@@ -9,10 +9,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!session) redirect('/auth/login')
 
   return (
-    <AuthProvider>
-      <DashboardShell>
-        {children}
-      </DashboardShell>
-    </AuthProvider>
+    <DashboardShell>
+      {children}
+    </DashboardShell>
   )
 }

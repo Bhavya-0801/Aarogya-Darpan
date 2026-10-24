@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getToken } from 'next-auth/jwt'
 import { supabaseAdmin } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET })
   if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -10,15 +12,27 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get('status') || 'active'
   const hospitalId = (token as any).hospitalId
 
-  const { data: registrations, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from('emergency_registrations')
     .select('*')
-    .eq('hospital_id', hospitalId)
-    .eq('status', status)
     .order('admitted_at', { ascending: false })
 
+  if (hospitalId) query = query.eq('hospital_id', hospitalId)
+  if (status && status !== 'all') query = query.eq('status', status)
+
+  const { data: registrations, error } = await query
+
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ registrations })
+  return NextResponse.json({
+    registrations: (registrations || []).map((r: any) => ({
+      ...r,
+      _id: r.id,
+      patientName: r.patient_name,
+      tempId: r.temp_id,
+      chiefComplaint: r.chief_complaint,
+      bedNumber: r.bed_number,
+    }))
+  })
 }
 
 export async function POST(req: NextRequest) {

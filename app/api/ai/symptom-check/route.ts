@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+export const dynamic = 'force-dynamic'
+
 // Rule-based symptom checker (works without OpenAI)
 // Can be replaced/augmented with OpenAI when key is available
 const SYMPTOM_DATABASE: Record<string, {
@@ -153,10 +155,11 @@ export async function POST(req: NextRequest) {
     }
 
     // Try OpenAI if available
-    if (process.env.OPENAI_API_KEY) {
+    const apiKey = process.env.OPENAI_API_KEY
+    if (apiKey && apiKey !== 'your-openai-api-key') {
       try {
         const { default: OpenAI } = await import('openai')
-        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+        const openai = new OpenAI({ apiKey })
 
         const completion = await openai.chat.completions.create({
           model: 'gpt-4o-mini',

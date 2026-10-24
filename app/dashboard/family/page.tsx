@@ -55,7 +55,7 @@ export default function FamilyPage() {
     if (!confirm('Remove this family member?')) return
     await axios.delete(`/api/family?id=${id}`)
     toast.success('Member removed')
-    setMembers(prev => prev.filter(m => m._id !== id))
+    setMembers(prev => prev.filter(m => m._id !== id && m.id !== id))
   }
 
   const COLORS = ['#0d9488', '#3b82f6', '#8b5cf6', '#f59e0b', '#ef4444', '#10b981']
@@ -92,22 +92,25 @@ export default function FamilyPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {members.map((m, i) => {
+            const memberId = m.id || m._id
             const color = COLORS[i % COLORS.length]
             const age = m.dob ? Math.floor((Date.now() - new Date(m.dob).getTime()) / (365.25 * 24 * 3600000)) : null
+            const blood = m.bloodGroup || m.blood_group
+            const chronic = m.chronicConditions || m.chronic_conditions || []
             return (
-              <div key={m._id} className="card-new p-5">
+              <div key={memberId} className="card-new p-5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-lg flex-shrink-0"
                       style={{ background: color }}>
-                      {m.name[0].toUpperCase()}
+                      {(m.name || 'M')[0].toUpperCase()}
                     </div>
                     <div>
                       <p className="font-bold" style={{ color: 'var(--text)' }}>{m.name}</p>
                       <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{m.relation}</p>
                     </div>
                   </div>
-                  <button onClick={() => deleteMember(m._id)}
+                  <button onClick={() => deleteMember(memberId)}
                     className="p-1.5 rounded-lg opacity-50 hover:opacity-100 transition-opacity"
                     style={{ background: 'rgba(239,68,68,0.1)', color: '#ef4444' }}>
                     <Trash2 className="w-3.5 h-3.5" />
@@ -123,11 +126,11 @@ export default function FamilyPage() {
                     <p className="label">AGE</p>
                     <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>{age ? `${age} years` : '—'}</p>
                   </div>
-                  {m.bloodGroup && (
+                  {blood && (
                     <div>
                       <p className="label">BLOOD GROUP</p>
                       <p className="text-sm font-medium flex items-center gap-1" style={{ color: 'var(--text)' }}>
-                        <Heart className="w-3 h-3 text-red-400" /> {m.bloodGroup}
+                        <Heart className="w-3 h-3 text-red-400" /> {blood}
                       </p>
                     </div>
                   )}
@@ -139,7 +142,7 @@ export default function FamilyPage() {
                   )}
                 </div>
 
-                {(m.allergies?.length > 0 || m.chronicConditions?.length > 0) && (
+                {(m.allergies?.length > 0 || chronic?.length > 0) && (
                   <div className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--border)' }}>
                     {m.allergies?.length > 0 && (
                       <div className="flex flex-wrap gap-1 mb-1">
@@ -148,9 +151,9 @@ export default function FamilyPage() {
                         ))}
                       </div>
                     )}
-                    {m.chronicConditions?.length > 0 && (
+                    {chronic?.length > 0 && (
                       <div className="flex flex-wrap gap-1">
-                        {m.chronicConditions.map((c: string) => (
+                        {chronic.map((c: string) => (
                           <span key={c} className="badge-yellow text-xs">{c}</span>
                         ))}
                       </div>

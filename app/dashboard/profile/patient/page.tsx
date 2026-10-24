@@ -22,19 +22,28 @@ export default function PatientProfilePage() {
     try {
       const { data } = await axios.get('/api/profile')
       const p = data.profile
-      setProfile(p)
-      setForm({
-        name: p.userId?.name || '',
-        phone: p.userId?.phone || '',
-        bloodGroup: p.bloodGroup || '',
-        allergies: p.allergies || [],
-        newAllergy: '',
-        chronicConditions: p.chronicConditions || [],
-        newCondition: '',
-        emergencyContact: p.emergencyContact || { name: '', relation: '', phone: '' },
-      })
-    } catch { }
-    finally { setLoading(false) }
+      if (p) {
+        setProfile(p)
+        setForm({
+          name: p.userId?.name || p.user?.name || '',
+          phone: p.userId?.phone || p.user?.phone || '',
+          bloodGroup: p.bloodGroup || p.blood_group || '',
+          allergies: Array.isArray(p.allergies) ? p.allergies : [],
+          newAllergy: '',
+          chronicConditions: Array.isArray(p.chronicConditions || p.chronic_conditions) ? (p.chronicConditions || p.chronic_conditions) : [],
+          newCondition: '',
+          emergencyContact: p.emergencyContact || {
+            name: p.emergency_name || '',
+            relation: p.emergency_relation || '',
+            phone: p.emergency_phone || '',
+          },
+        })
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function save() {
@@ -101,7 +110,7 @@ export default function PatientProfilePage() {
         <div className="flex items-start gap-6">
           <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-white text-3xl font-bold flex-shrink-0"
             style={{ background: 'linear-gradient(135deg, var(--hero-from), var(--hero-to))' }}>
-            {(profile?.userId?.name || 'U')[0].toUpperCase()}
+            {((profile?.userId?.name || profile?.user?.name || 'U')[0]).toUpperCase()}
           </div>
           <div className="flex-1 grid grid-cols-2 gap-4">
             <div>
@@ -110,7 +119,7 @@ export default function PatientProfilePage() {
                 <input className="input-field" value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
               ) : (
-                <p className="font-semibold" style={{ color: 'var(--text)' }}>{profile?.userId?.name}</p>
+                <p className="font-semibold" style={{ color: 'var(--text)' }}>{profile?.userId?.name || profile?.user?.name || '—'}</p>
               )}
             </div>
             <div>
@@ -119,7 +128,7 @@ export default function PatientProfilePage() {
                 <input className="input-field" value={form.phone} placeholder="+91..."
                   onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
               ) : (
-                <p style={{ color: 'var(--text)' }}>{profile?.userId?.phone || '—'}</p>
+                <p style={{ color: 'var(--text)' }}>{profile?.userId?.phone || profile?.user?.phone || '—'}</p>
               )}
             </div>
             <div>

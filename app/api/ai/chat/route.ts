@@ -1,44 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server'
+import OpenAI from 'openai'
+
+export const dynamic = 'force-dynamic'
 
 const HEALTH_RESPONSES: Record<string, string[]> = {
-  'hello|hi|hey': [
-    "Hello! I'm Aarogya, your health assistant. How can I help you today? You can ask me about symptoms, medications, health tips, or general medical questions.",
+  'hello|hi|hey|greetings': [
+    "Hello! I'm **Aarogya**, your personal health assistant at Aarogya Darpan. How can I assist you with your health today? You can ask me about symptoms, medications, appointments, reports, or general wellness advice.",
   ],
-  'appointment': [
-    "To book an appointment, go to the **Appointments** section in your dashboard. You can select your doctor, preferred date and time, and describe your chief complaint.",
+  'appointment|book|schedule': [
+    "To book an appointment, head over to the **[Appointments](/dashboard/appointments)** section in your dashboard. You can pick your hospital, select an available doctor, choose your preferred slot, and submit your request in seconds.",
   ],
-  'report|lab|test': [
-    "Your lab reports are available in the **Lab Reports** section. Your doctor has access to them too. If you see abnormal values marked in red, please consult your doctor immediately.",
+  'report|lab|test|investigation': [
+    "Your laboratory investigation reports are securely organized in the **[Lab Reports](/dashboard/labs)** section. Abnormal values are flagged for prompt clinical review. Always share new reports with your consulting physician.",
   ],
-  'prescription|medicine|medication': [
-    "Your prescriptions are recorded in your **Medical Records**. Always take medications as prescribed. Never stop a medication without consulting your doctor, especially antibiotics.",
+  'prescription|medicine|medication|dose': [
+    "You can view your active prescriptions and drug regimens under **[Prescriptions](/dashboard/prescriptions)**. Always take medicines precisely as directed by your physician and never discontinue antibiotics early.",
   ],
   'blood pressure|bp|hypertension': [
-    "Normal blood pressure is below 120/80 mmHg. Readings above 130/80 are considered elevated (hypertension). Reduce salt intake, exercise regularly, manage stress, and take prescribed medications consistently.",
+    "Normal resting blood pressure is generally under 120/80 mmHg. For readings consistently above 130/80, reduce dietary sodium, exercise for 30 minutes daily, minimize stress, and consult your doctor for personalized management.",
   ],
-  'diabetes|sugar|glucose': [
-    "Diabetes management includes: monitoring blood sugar regularly, following a low-glycemic diet, regular exercise (30 min/day), taking medications on time, and regular HbA1c checks every 3 months.",
+  'diabetes|sugar|glucose|hba1c': [
+    "Managing blood glucose involves a balanced low-glycemic diet, regular physical exercise, taking prescribed medications consistently, and monitoring HbA1c every 3 months. Let your physician know if you experience frequent hypoglycemia symptoms.",
   ],
-  'diet|nutrition|food': [
-    "A balanced diet for good health: Include plenty of fruits and vegetables (5 servings/day), whole grains, lean proteins, and healthy fats. Limit processed foods, sugar, and salt. Stay hydrated with 8 glasses of water daily.",
+  'diet|nutrition|food|calories': [
+    "A healthy balanced diet consists of abundant vegetables, fruits, whole grains, lean protein, and adequate hydration (8–10 glasses of water daily). Try to limit ultra-processed snacks, high sodium, and refined sugars.",
   ],
   'exercise|workout|physical activity': [
-    "WHO recommends at least 150 minutes of moderate aerobic activity per week (e.g., brisk walking, cycling). Strength training 2x/week. Start slow and gradually increase intensity.",
+    "The WHO recommends at least 150 minutes of moderate aerobic activity (like brisk walking, swimming, or cycling) per week, supplemented by 2 days of muscle-strengthening exercises.",
   ],
   'sleep|insomnia|rest': [
-    "Adults need 7-9 hours of quality sleep. Tips: Maintain a consistent sleep schedule, keep your bedroom cool and dark, avoid screens 1 hour before bed, limit caffeine after 2 PM.",
+    "Quality sleep is vital for immune and cardiovascular health. Adults generally need 7–9 hours per night. Avoid screens 1 hour before bed, keep the room cool and dark, and maintain consistent sleeping hours.",
   ],
   'stress|anxiety|mental health': [
-    "Mental health is as important as physical health. Try: deep breathing exercises, regular physical activity, talking to someone you trust, limiting news consumption, and mindfulness/meditation. If persistent, please consult a mental health professional.",
-  ],
-  'weight|bmi|obesity': [
-    "Healthy BMI range is 18.5–24.9. To manage weight: Create a caloric deficit through diet + exercise, focus on sustainable habits not crash diets, get adequate sleep (poor sleep increases hunger hormones), and track progress weekly not daily.",
-  ],
-  'smoking|tobacco': [
-    "Smoking causes cancer, heart disease, and COPD. Quitting benefits start within 20 minutes of stopping. Try nicotine replacement therapy, consult your doctor about prescription aids, set a quit date, and identify your triggers.",
-  ],
-  'covid|corona|virus': [
-    "COVID-19 precautions: Stay up to date on vaccinations, wash hands frequently, wear masks in crowded enclosed spaces, maintain ventilation. If symptomatic: isolate and consult your healthcare provider.",
+    "Chronic stress impacts physical well-being. Deep diaphragmatic breathing, mindfulness, daily physical activity, and speaking with a counselor can bring meaningful relief. If anxiety persists, consult a qualified mental health practitioner.",
   ],
 }
 
@@ -52,7 +46,7 @@ function getRuleBasedResponse(message: string): string {
     }
   }
 
-  return "I can help you with health-related questions, symptoms, medications, appointments, and medical records. Could you be more specific about your health concern? For urgent medical situations, please call emergency services or visit the nearest hospital."
+  return "I'm here to help you navigate your health concerns, understand symptoms, manage medication schedules, or guide you through your hospital dashboard. Could you tell me a bit more about what you're experiencing?\n\n*Note: For acute medical emergencies, please immediately visit the nearest emergency department or call your local emergency hotline.*"
 }
 
 export async function POST(req: NextRequest) {
@@ -63,55 +57,54 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Message required' }, { status: 400 })
     }
 
-    // Try OpenAI if available
-    if (process.env.OPENAI_API_KEY) {
+    const apiKey = process.env.OPENAI_API_KEY
+    if (apiKey && apiKey !== 'your-openai-api-key') {
       try {
-        const { default: OpenAI } = await import('openai')
-        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+        const openai = new OpenAI({ apiKey })
 
-        const messages: any[] = [
+        const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
           {
             role: 'system',
-            content: `You are Aarogya, a friendly and knowledgeable health assistant for Aarogya Darpan hospital management system.
-You help users with:
-- General health questions and advice
-- Understanding symptoms and when to seek care  
-- Medication information and adherence
-- Healthy lifestyle tips
-- Navigating hospital services (appointments, records, bills)
+            content: `You are Aarogya, the clinical AI Health Assistant for Aarogya Darpan — a modern digital hospital and health management system.
+Your mission is to provide accurate, empathetic, and clear healthcare guidance to patients and medical staff.
 
-Rules:
-- Always recommend professional medical consultation for serious concerns
-- Never diagnose or prescribe medications
-- Be empathetic and clear
-- Keep responses concise (2-3 paragraphs max)
-- Use markdown formatting for readability`,
+Guidelines:
+1. Provide helpful medical information, lifestyle advice, symptom explanations, and triage recommendations.
+2. Emphasize when conditions warrant seeing a doctor, visiting the emergency room, or booking an appointment in the dashboard (/dashboard/appointments).
+3. Do not formulate definitive diagnoses or prescribe prescription drugs; recommend clinical consultation.
+4. Format responses cleanly using Markdown (bullet points, bold text for key terms). Keep explanations structured and easy to read.
+5. If the user asks about system features, guide them to the appropriate dashboard section (Appointments, Prescriptions, Lab Reports, Family Members, Billing).`,
           },
-          ...(history || []).slice(-10),
-          { role: 'user', content: message },
+          ...(Array.isArray(history)
+            ? history.slice(-8).map((m: any) => ({
+                role: (m.role === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
+                content: String(m.content || ''),
+              }))
+            : []),
+          { role: 'user', content: message.trim() },
         ]
 
         const response = await openai.chat.completions.create({
           model: 'gpt-4o-mini',
           messages,
-          max_tokens: 500,
+          max_tokens: 600,
           temperature: 0.7,
         })
 
-        return NextResponse.json({
-          response: response.choices[0].message.content,
-          source: 'ai',
-        })
-      } catch (aiError) {
-        console.error('OpenAI chat error:', aiError)
+        const reply = response.choices?.[0]?.message?.content
+        if (reply) {
+          return NextResponse.json({ response: reply, source: 'openai' })
+        }
+      } catch (aiError: any) {
+        console.error('[OpenAI Chat API Error]:', aiError?.message || aiError)
+        // Graceful fallback to rule-based engine
       }
     }
 
-    // Rule-based fallback
-    const response = getRuleBasedResponse(message)
-    return NextResponse.json({ response, source: 'rule-based' })
-  } catch (error) {
-    console.error('Chat error:', error)
+    const ruleResponse = getRuleBasedResponse(message)
+    return NextResponse.json({ response: ruleResponse, source: 'rule-based' })
+  } catch (error: any) {
+    console.error('[Chat API Error]:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }

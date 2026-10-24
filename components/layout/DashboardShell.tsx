@@ -164,15 +164,12 @@ export default function DashboardShell({ children }: { children: React.ReactNode
     <>
       {/* Brand Header */}
       <div className="sidebar-header">
-        <Link href="/dashboard" className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-lg"
-            style={{ background: 'linear-gradient(135deg, #0d9488, #059669)' }}>
-            <Heart className="w-5 h-5 text-white fill-white" />
-          </div>
-          <div>
-            <span className="font-serif font-bold text-white text-lg tracking-tight">Aarogya</span>
-            <span className="font-serif text-teal-400 text-lg ml-1">Darpan</span>
-          </div>
+        <Link href="/dashboard" className="w-full flex items-center justify-center bg-white/95 hover:bg-white rounded-xl py-2 px-3 shadow transition-all">
+          <img
+            src="/logo.png"
+            alt="Aarogya Darpan"
+            className="h-9 w-auto max-w-[190px] object-contain"
+          />
         </Link>
       </div>
 

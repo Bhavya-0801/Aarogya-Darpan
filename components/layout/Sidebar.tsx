@@ -57,15 +57,13 @@ export default function Sidebar() {
   return (
     <aside className="w-64 min-h-screen bg-white border-r border-gray-100 flex flex-col">
       {/* Logo */}
-      <div className="p-6 border-b border-gray-100">
-        <Link href="/dashboard" className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-brand flex items-center justify-center">
-            <Heart className="w-5 h-5 text-white fill-current" />
-          </div>
-          <div>
-            <span className="font-bold text-gray-900 text-base block leading-tight">Aarogya Darpan</span>
-            <span className="text-xs text-gray-400">Hospital Portal</span>
-          </div>
+      <div className="p-4 border-b border-gray-100 flex items-center justify-center">
+        <Link href="/dashboard" className="flex items-center justify-center">
+          <img
+            src="/logo.png"
+            alt="Aarogya Darpan"
+            className="h-10 w-auto object-contain"
+          />
         </Link>
       </div>
 
